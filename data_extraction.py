@@ -19,14 +19,17 @@ class DataExtractor:
 
     def retrieve_pdf_data(self, link):
         try:
-            pdf_df = tabula.read_pdf(link, stream=True, pages='all')
-            
-            if len(pdf_df) > 1:
-                df = pd.concat(pdf_df)
-            else:
-                df = pdf_df[0]
+            pdf_df_list = []
+            pdf_pages = tabula.read_pdf(link, pages='all')
 
-            return df
+            for pdf_page in pdf_pages:
+                pdf_df_list.append(pdf_page)
+
+            if pdf_df_list:
+                combined_df = pd.concat(pdf_df_list, ignore_index=True)
+                return combined_df
+            else:
+                return None
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
@@ -38,7 +41,7 @@ class DataExtractor:
     
     def retrieve_stores_data (self, retrieve_store_endpoint, headers, number_of_stores):
         data = []
-        for store_number in range(1, number_of_stores + 1):
+        for store_number in range(0, number_of_stores + 1):
             response = requests.get(f"{retrieve_store_endpoint}/{store_number}", headers=headers)
             if response.status_code == 200:
                 store_data = response.json()

@@ -6,13 +6,13 @@ from data_extraction import DataExtractor
 
 class DataCleaning: 
     def __init__(self, data):
+        
         self.data = data
 
     def clean_user_data(self):
         # Handle NULL values
-        self.data = self.data.dropna()  
 
-
+        print(len(self.data), self.data.isnull().any(axis=1).sum(), self.data.columns)
         self.data['date_of_birth'] = pd.to_datetime(self.data['date_of_birth'], errors='coerce')
 
 
@@ -24,9 +24,14 @@ class DataCleaning:
                                'expiry_date', 
                                'card_provider',
                                'date_payment_confirmed']
-                               ] 
+                               ].copy()
+        self.data['card_number'] = self.data['card_number'].astype('str')
+        
+        self.data = self.data.dropna(subset=['card_number'])
+        print('removing regex')
+        self.data['card_number'] = self.data['card_number'].str.replace('^\\?+', '', regex=True)
 
-        self.data = self.data.dropna() 
+        
         self.data['date_payment_confirmed'] = pd.to_datetime(self.data['date_payment_confirmed'], errors='coerce')
 
 
@@ -37,7 +42,7 @@ class DataCleaning:
         
 
         # self.data = self.data.dropna() 
-        self.data.drop(['index', 'lat'], axis=1, inplace=True)
+        self.data.drop(['index'], axis=1, inplace=True)
 
 
         return self.data
@@ -90,13 +95,13 @@ class DataCleaning:
 
         # print(self.data['weight'].to_list())
         self.data['weight'] = self.data['weight'].apply(convert_to_kg)
-        self.data.rename(columns={ 'weight': "weight-kg" }, inplace = True)
+        self.data.rename(columns={ 'weight': "weight_kg" }, inplace = True)
         
         return self.data
     
 
 
-    def clean_products_dat(self):
+    def clean_products_data(self):
               
 
         # self.data = self.data.dropna() 
@@ -107,7 +112,7 @@ class DataCleaning:
     def clean_orders_data(self):     
 
         # self.data = self.data.dropna() 
-        self.data.drop(['index','first_name', 'last_name', '1'], axis=1, inplace=True)
+        self.data.drop(['index','level_0','first_name', 'last_name', '1'], axis=1, inplace=True)
 
         return self.data
     
@@ -117,92 +122,110 @@ class DataCleaning:
         return self.data
      
 
+if __name__ == "__main__":
 
-db_connector = DatabaseConnector('db_creds.yaml')
+    db_connector = DatabaseConnector('db_creds.yaml')
+    tables = db_connector.list_db_tables()
+    print(tables)
 
-tables = db_connector.list_db_tables()
-print(tables)
-
-extractor = DataExtractor(db_connector)
-
-
-### extract the users data
-# user_data_df = extractor.read_rds_table(tables[0])
-
-### extract orders data
-# order_data_df = extractor.read_rds_table(tables[2])
-
-### extract time data
-# json_url = 'https://data-handling-public.s3.eu-west-1.amazonaws.com/date_details.json'
-# time_data_df = extractor.extract_date_from_json(json_url)
-
-### extract the card data
-# card_data_df = extractor.retrieve_pdf_data('https://data-handling-public.s3.eu-west-1.amazonaws.com/card_details.pdf')
+    extractor = DataExtractor(db_connector)
 
 
-##header for the stores data
-# headers = {
-#     "Content-Type": "application/json",
-#     "Authorization": "Bearer your_token_here",
-#     "x-api-key":"yFBQbwXe9J3sd6zWVAMrK6lcxxr0q1lr2PT6DDMX"
-# }
+    ### extract the users data
+    user_data_df = extractor.read_rds_table(tables[1])
 
-## get the number of stores used in extracting all the stores
-# number_of_stores_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/number_stores'
-# number_of_stores = extractor.list_number_of_stores(number_of_stores_endpoint, headers)
+    #### clean the users data
+    data_cleaner = DataCleaning(user_data_df)
+    cleaned_data = data_cleaner.clean_user_data()
 
-
-## extract the store data
-# retrieve_store_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/store_details'
-# stores_df = extractor.retrieve_stores_data(retrieve_store_endpoint, headers, number_of_stores)
-
-##extract the products data
-# s3_address = 's3://data-handling-public/products.csv'
-# products_df = extractor.extract_from_s3(s3_address)
-
-
-#### clean the users data
-# data_cleaner = DataCleaning(user_data_df)
-# cleaned_data = data_cleaner.clean_user_data()
-
-### clean the cards data
-# data_cleaner = DataCleaning(card_data_df)
-# cleaned_data = data_cleaner.clean_card_data()
-# print(cleaned_data)
-
-### clean the stores data
-# data_cleaner = DataCleaning(stores_df)
-# cleaned_data = data_cleaner.clean_store_data()
-# print(cleaned_data.head())
+    #### save users data
+    db_connector.upload_to_db(cleaned_data, 'dim_users') 
 
 
 
-### clean the products data
-# data_cleaner = DataCleaning(products_df)
-# cleaned_weight = data_cleaner.convert_product_weights()
-# print(cleaned_weight.head())
+    #### extract orders data
+    order_data_df = extractor.read_rds_table(tables[2])
 
-# data_cleaner = DataCleaning(cleaned_weight)
-# cleaned_data = data_cleaner.clean_products_data()
-# print(cleaned_data.head())
+    #### clean orders data
+    data_cleaner = DataCleaning(order_data_df)
+    cleaned_data = data_cleaner.clean_orders_data ()
+    print(len(cleaned_data))
+    print(cleaned_data.head())
 
-### clean order data
-# data_cleaner = DataCleaning(order_data_df)
-# cleaned_data = data_cleaner.clean_orders_data ()
-# print(cleaned_data.head())
+    #### save orders data
+    db_connector.upload_to_db(cleaned_data, 'orders_table') 
+    
+    
+    
+    #### extract time data
+    json_url = 'https://data-handling-public.s3.eu-west-1.amazonaws.com/date_details.json'
+    time_data_df = extractor.extract_date_from_json(json_url)
+
+    #### clean time data
+    data_cleaner = DataCleaning(time_data_df)
+    cleaned_data = data_cleaner.clean_time_data ()
+    print(cleaned_data.head())
+
+    db_connector.upload_to_db(cleaned_data, 'dim_date_times') #save time data
+
+    
+    
+    #### extract the card data
+    card_data_df = extractor.retrieve_pdf_data('https://data-handling-public.s3.eu-west-1.amazonaws.com/card_details.pdf')
+
+    #### clean the cards data
+    data_cleaner = DataCleaning(card_data_df)
+    cleaned_data = data_cleaner.clean_card_data()
+    print(cleaned_data)
+
+    #### save card data
+    db_connector.upload_to_db(cleaned_data, 'dim_card_details') 
 
 
-### clean timr data
-# data_cleaner = DataCleaning(time_data_df)
-# cleaned_data = data_cleaner.clean_time_data ()
-# print(cleaned_data.head())
 
-# db_connector.upload_to_db(cleaned_data, 'dim_users') # save users data
-# db_connector.upload_to_db(cleaned_data, 'dim_card_details') #save card data
-# db_connector.upload_to_db(cleaned_data, 'dim_store_details') #save store data
-# db_connector.upload_to_db(cleaned_data, 'dim_products') #save products data 
-# db_connector.upload_to_db(cleaned_data, 'orders_table') #save orders data
-# db_connector.upload_to_db(cleaned_data, 'dim_date_times') #save time data
+    ### header for the stores data
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer your_token_here",
+        "x-api-key":"yFBQbwXe9J3sd6zWVAMrK6lcxxr0q1lr2PT6DDMX"
+    }
+
+    #### get the number of stores used in extracting all the stores
+    number_of_stores_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/number_stores'
+    number_of_stores = extractor.list_number_of_stores(number_of_stores_endpoint, headers)
+
+
+    #### extract the store data
+    retrieve_store_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/store_details'
+    stores_df = extractor.retrieve_stores_data(retrieve_store_endpoint, headers, number_of_stores)
+
+    #### clean the stores data
+    data_cleaner = DataCleaning(stores_df)
+    cleaned_data = data_cleaner.clean_store_data()
+    print(cleaned_data.head())
+
+    db_connector.upload_to_db(cleaned_data, 'dim_store_details') #save store data
+
+
+
+    #### extract the products data
+    s3_address = 's3://data-handling-public/products.csv'
+    products_df = extractor.extract_from_s3(s3_address)
+
+    #### clean the products data
+    data_cleaner = DataCleaning(products_df)
+    cleaned_weight = data_cleaner.convert_product_weights()
+    print(cleaned_weight.head())
+
+    data_cleaner = DataCleaning(cleaned_weight)
+    cleaned_data = data_cleaner.clean_products_data()
+    print(cleaned_data.head())
+
+    db_connector.upload_to_db(cleaned_data, 'dim_products') #save products data 
+    
+    
+
+    
 
 
 

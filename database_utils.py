@@ -34,8 +34,14 @@ class DatabaseConnector:
             return tables
         
     def upload_to_db(self, data, tb_name):
-        data.to_sql(tb_name, self.local_connection, if_exists='replace')
-        return True
+        try:
+            data.to_sql(tb_name, self.local_connection, if_exists='replace')
+            print(f"Dataset Successfully Uploaded")
+            return True
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return False
+
         
 
 
